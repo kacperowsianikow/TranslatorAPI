@@ -1,13 +1,14 @@
 package com.example.Translator.service;
 
+import com.example.Translator.dto.ListTranslationDTO;
+import com.example.Translator.dto.ListUnknownWordDTO;
+import com.example.Translator.dto.TranslationCreationDTO;
+import com.example.Translator.dto.TranslationDTO;
+import com.example.Translator.mapper.Mapper;
 import com.example.Translator.repository.ITranslationsRepository;
 import com.example.Translator.repository.IUnknownWordsRepository;
-import com.example.Translator.translation.NewTranslationRequest;
-import com.example.Translator.translation.SingleTranslationResponse;
 import com.example.Translator.translation.Translation;
-import com.example.Translator.translation.TranslationResponse;
-import com.example.Translator.unknownwords.UnknownWord;
-import com.example.Translator.unknownwords.UnknownWordResponse;
+import com.example.Translator.unknownword.UnknownWord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,14 +17,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.*;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @ExtendWith(MockitoExtension.class)
@@ -32,17 +31,21 @@ class AppServiceTest {
     private ITranslationsRepository iTranslationsRepository;
     @Mock
     private IUnknownWordsRepository iUnknownWordsRepository;
+    @Mock
+    private Mapper mapper;
     private AppService appService;
 
     @BeforeEach
     void setUp() {
-        iTranslationsRepository = mock(ITranslationsRepository.class);
-        iUnknownWordsRepository = mock(IUnknownWordsRepository.class);
-        appService = new AppService(iTranslationsRepository, iUnknownWordsRepository);
+        appService = new AppService(
+                iTranslationsRepository,
+                iUnknownWordsRepository,
+                mapper
+        );
     }
 
     @Test
-    void translateWord_translatedToEnglish() {
+    void translateWord_successfullyTranslatedToEnglish() {
         String input = "żołnierz";
         Translation translation = new Translation(
                 "żołnierz",
@@ -51,14 +54,20 @@ class AppServiceTest {
 
         when(iTranslationsRepository.findByPolishWordIgnoreCase(input))
                 .thenReturn(Optional.of(translation));
+        when(mapper.toTranslationDTO(translation.getEnglishWord()))
+                .thenReturn(new TranslationDTO("soldier"));
 
-        SingleTranslationResponse result = appService.translateWord(input);
+        TranslationDTO result = appService.translateWord(input);
 
-        assertThat(result.translatedWord()).isEqualTo("soldier");
+        assertThat(result.translation()).isEqualTo("soldier");
+
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase(input);
+
+        verify(mapper).toTranslationDTO(translation.getEnglishWord());
     }
 
     @Test
-    void translateWord_translatedToPolish() {
+    void translateWord_successfullyTranslatedToPolish() {
         String input = "oak";
         Translation translation = new Translation(
                 "dąb",
@@ -67,29 +76,43 @@ class AppServiceTest {
 
         when(iTranslationsRepository.findByEnglishWordIgnoreCase(input))
                 .thenReturn(Optional.of(translation));
+        when(mapper.toTranslationDTO(translation.getPolishWord()))
+                .thenReturn(new TranslationDTO("dąb"));
 
-        SingleTranslationResponse result = appService.translateWord(input);
+        TranslationDTO result = appService.translateWord(input);
 
-        assertThat(result.translatedWord()).isEqualTo("dąb");
+        assertThat(result.translation()).isEqualTo("dąb");
+
+        verify(iTranslationsRepository).findByEnglishWordIgnoreCase(input);
+
+        verify(mapper).toTranslationDTO(translation.getPolishWord());
     }
 
     @Test
-    void translateWord_nonExistingTranslation() {
+    void translateWord_wordNotExistingInDBTranslation() {
         String input = "ice cream";
 
         when(iTranslationsRepository.findByPolishWordIgnoreCase(input))
                 .thenReturn(Optional.empty());
         when(iTranslationsRepository.findByEnglishWordIgnoreCase(input))
                 .thenReturn(Optional.empty());
+        when(mapper.toTranslationDTO("Provided word doesn't exist in the database"))
+                .thenReturn(new TranslationDTO("Provided word doesn't exist in the database"));
 
-        SingleTranslationResponse result = appService.translateWord(input);
+        TranslationDTO result = appService.translateWord(input);
 
-        assertThat(result.translatedWord()).isEqualTo("Provided word doesn't exist in the database");
+        assertThat(result.translation()).isEqualTo("Provided word doesn't exist in the database");
+
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase(input);
+        verify(iTranslationsRepository).findByEnglishWordIgnoreCase(input);
+
+        verify(mapper).toTranslationDTO("Provided word doesn't exist in the database");
     }
 
     @Test
-    void translateSentence_translatedAllWords() {
+    void translateSentence_successfullyTranslatedAllWords() {
         String input = "Kot, goni mysz.";
+        TranslationDTO expected = new TranslationDTO("Cat chases mouse.");
 
         when(iTranslationsRepository.findByPolishWordIgnoreCase("Kot"))
                 .thenReturn(Optional.of(new Translation("kot", "cat")));
@@ -97,15 +120,24 @@ class AppServiceTest {
                 .thenReturn(Optional.of(new Translation("goni", "chases")));
         when(iTranslationsRepository.findByPolishWordIgnoreCase("mysz"))
                 .thenReturn(Optional.of(new Translation("mysz", "mouse")));
+        when(mapper.toTranslationDTO("Cat chases mouse."))
+                .thenReturn(expected);
 
-        String result = appService.translateSentence(input);
+        TranslationDTO result = appService.translateSentence(input);
 
-        assertThat(result).isEqualTo("Cat chases mouse.");
+        assertThat(result.translation()).isEqualTo(expected.translation());
+
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("Kot");
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("goni");
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("mysz");
+
+        verify(mapper).toTranslationDTO(expected.translation());
     }
 
     @Test
-    void translateSentence_oneWordNotTranslated() {
+    void translateSentence_onlyOneWordNotTranslated() {
         String input = "stół bez nóg";
+        TranslationDTO expected = new TranslationDTO("Table bez legs.");
 
         when(iTranslationsRepository.findByPolishWordIgnoreCase("stół"))
                 .thenReturn(Optional.of(new Translation("stół", "table")));
@@ -113,83 +145,144 @@ class AppServiceTest {
                 .thenReturn(Optional.empty());
         when(iTranslationsRepository.findByPolishWordIgnoreCase("nóg"))
                 .thenReturn(Optional.of(new Translation("nóg", "legs")));
+        when(mapper.toTranslationDTO("Table bez legs."))
+                .thenReturn(expected);
 
-        String result = appService.translateSentence(input);
+        TranslationDTO result = appService.translateSentence(input);
 
-        assertThat(result).isEqualTo("Table bez legs.");
+        assertThat(result.translation()).isEqualTo(expected.translation());
+
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("stół");
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("bez");
+        verify(iTranslationsRepository).findByPolishWordIgnoreCase("nóg");
+
+        verify(mapper).toTranslationDTO(expected.translation());
     }
 
     @Test
-    void translateSentence_blankInput() {
+    void translateSentence_providedBlankInputShouldReturnInfo() {
         String input = " ";
 
-        String result = appService.translateSentence(input);
+        TranslationDTO expected = new TranslationDTO("Provided blank input");
 
-        assertThat(result).isEqualTo("Provided blank input");
+        when(mapper.toTranslationDTO("Provided blank input"))
+                .thenReturn(expected);
+
+        TranslationDTO result = appService.translateSentence(input);
+
+        assertThat(result).isEqualTo(expected);
+
+        verify(mapper).toTranslationDTO("Provided blank input");
     }
 
     @Test
-    void listUnknownWords() {
-        UnknownWord firstUnknown = new UnknownWord(1L, "dom");
-        UnknownWord secondUnknown = new UnknownWord(2L, "kamienica");
-        List<UnknownWord> allUnknownWords = Arrays.asList(firstUnknown, secondUnknown);
-
-        when(iUnknownWordsRepository.findAll()).thenReturn(allUnknownWords);
-
-        List<UnknownWordResponse> allUnknownWordsOutput = appService.listUnknownWords();
-        UnknownWordResponse firstResult = allUnknownWordsOutput.get(0);
-        UnknownWordResponse secondResult = allUnknownWordsOutput.get(1);
-
-        assertThat(firstResult.id()).isEqualTo(firstUnknown.getId());
-        assertThat(firstResult.unknownWord()).isEqualTo(firstUnknown.getUnknownWord());
-
-        assertThat(secondResult.id()).isEqualTo(secondUnknown.getId());
-        assertThat(secondResult.unknownWord()).isEqualTo(secondUnknown.getUnknownWord());
-    }
-
-    @Test
-    void newTranslation_validInputNotInDB() {
-        NewTranslationRequest request = new NewTranslationRequest(
+    void newTranslation_successfullyAddedToTheDB() {
+        TranslationCreationDTO translatioCreationDTO = new TranslationCreationDTO(
+                "żółty",
+                "yellow"
+        );
+        Translation translation = new Translation(
                 "żółty",
                 "yellow"
         );
 
-        String result = appService.newTranslation(request);
+        when(iTranslationsRepository.findByEnglishWordIgnoreCase("yellow"))
+                .thenReturn(Optional.empty());
+        when(mapper.toTranslation(translatioCreationDTO))
+                .thenReturn(translation);
+
+        String result = appService.newTranslation(translatioCreationDTO);
 
         assertThat(result).isEqualTo("New translation added to the dictionary");
+
+        verify(iTranslationsRepository).save(translation);
+
+        verify(mapper).toTranslation(translatioCreationDTO);
     }
 
     @Test
     void newTranslation_providedTranslationAlreadyExists() {
-        Translation translation = new Translation("kot", "cat");
-        NewTranslationRequest request = new NewTranslationRequest(
+        Translation translation = new Translation(
                 "kot",
                 "cat"
         );
-        when(iTranslationsRepository.findByEnglishWordIgnoreCase(request.englishWord()))
+        TranslationCreationDTO translationCreationDTO = new TranslationCreationDTO(
+                "kot",
+                "cat"
+        );
+
+        when(iTranslationsRepository.findByEnglishWordIgnoreCase(translationCreationDTO.englishWord()))
                 .thenReturn(Optional.of(translation));
 
-        String result = appService.newTranslation(request);
+        String result = appService.newTranslation(translationCreationDTO);
 
         assertThat(result).isEqualTo("Provided translation already exists");
+
+        verify(iTranslationsRepository, never()).save(any());
     }
 
     @Test
-    void listTranslations_test() {
+    void listTranslations_shouldReturnSuccessfully() {
         Pageable pageable = PageRequest.of(0, 5, Sort.by("id"));
 
-        List<Translation> translations = new ArrayList<>();
-        translations.add(new Translation("kot", "cat"));
-        translations.add(new Translation("pies", "dog"));
-        translations.add(new Translation("chomik", "hamster"));
+        List<Translation> translations = Arrays.asList(
+                new Translation("kot", "cat"),
+                new Translation("pies", "dog")
+        );
+
+        List<ListTranslationDTO> expected = Arrays.asList(
+                new ListTranslationDTO(1L, "kot", "cat"),
+                new ListTranslationDTO(2L, "pies", "dog")
+        );
 
         Page<Translation> page = new PageImpl<>(translations, pageable, translations.size());
 
-        when(iTranslationsRepository.findAll(pageable)).thenReturn(page);
+        when(iTranslationsRepository.findAll(pageable))
+                .thenReturn(page);
+        when(mapper.toListTranslationDTO(translations.get(0)))
+                .thenReturn(expected.get(0));
+        when(mapper.toListTranslationDTO(translations.get(1)))
+                .thenReturn(expected.get(1));
 
-        List<TranslationResponse> translationResponses = appService.listTranslations(pageable);
+        List<ListTranslationDTO> translationsDTOS = appService.listTranslations(pageable);
 
-        assertThat(translationResponses.size()).isEqualTo(3);
+        assertThat(translationsDTOS).hasSize(2);
+        assertThat(translationsDTOS).isEqualTo(expected);
+
+        verify(iTranslationsRepository).findAll(pageable);
+
+        verify(mapper).toListTranslationDTO(translations.get(0));
+        verify(mapper).toListTranslationDTO(translations.get(1));
+    }
+
+    @Test
+    void listUnknownWords_shouldReturnSuccessfully() {
+        List<UnknownWord> unknownWords = Arrays.asList(
+                new UnknownWord("dom"),
+                new UnknownWord("kamienica")
+        );
+
+        List<ListUnknownWordDTO> expected = Arrays.asList(
+                new ListUnknownWordDTO(1L, "dom"),
+                new ListUnknownWordDTO(2L, "kamienica")
+        );
+
+        when(iUnknownWordsRepository.findAll())
+                .thenReturn(unknownWords);
+        when(mapper.toListUnknownWordDTO(unknownWords.get(0)))
+                .thenReturn(expected.get(0));
+        when(mapper.toListUnknownWordDTO(unknownWords.get(1)))
+                .thenReturn(expected.get(1));
+
+        List<ListUnknownWordDTO> unknownWordDTOS = appService.listUnknownWords();
+
+        assertThat(unknownWordDTOS).hasSize(2);
+        assertThat(unknownWordDTOS).isEqualTo(expected);
+
+        verify(iUnknownWordsRepository).findAll();
+
+        verify(mapper).toListUnknownWordDTO(unknownWords.get(0));
+        verify(mapper).toListUnknownWordDTO(unknownWords.get(1));
     }
 
 }

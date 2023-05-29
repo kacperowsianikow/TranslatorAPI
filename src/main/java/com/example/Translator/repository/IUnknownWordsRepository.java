@@ -1,6 +1,6 @@
 package com.example.Translator.repository;
 
-import com.example.Translator.unknownwords.UnknownWord;
+import com.example.Translator.unknownword.UnknownWord;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

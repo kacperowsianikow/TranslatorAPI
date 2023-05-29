@@ -1,4 +1,4 @@
-package com.example.Translator.unknownwords;
+package com.example.Translator.unknownword;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

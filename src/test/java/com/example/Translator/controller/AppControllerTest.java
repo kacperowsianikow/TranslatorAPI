@@ -1,12 +1,8 @@
 package com.example.Translator.controller;
 
-import com.example.Translator.report.Report;
+import com.example.Translator.dto.*;
 import com.example.Translator.service.AppService;
 import com.example.Translator.service.ReportService;
-import com.example.Translator.translation.NewTranslationRequest;
-import com.example.Translator.translation.SingleTranslationResponse;
-import com.example.Translator.translation.TranslationResponse;
-import com.example.Translator.unknownwords.UnknownWordResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.runner.RunWith;
@@ -40,11 +36,11 @@ class AppControllerTest {
     private ReportService reportService;
 
     @Test
-    void translate_test() throws Exception {
+    void translate_shouldTranslateSuccessfully() throws Exception {
         String input = "cat";
         String translation = "kot";
 
-        SingleTranslationResponse expected = new SingleTranslationResponse(translation);
+        TranslationDTO expected = new TranslationDTO(translation);
 
         when(appService.translateWord(input)).thenReturn(expected);
 
@@ -54,16 +50,17 @@ class AppControllerTest {
 
         mockMvc.perform(builder)
                 .andExpect(status().isOk())
-                .andExpect(content().json("{\"translatedWord\":\"kot\"}"));
+                .andExpect(content().json("{\"translation\":\"kot\"}"));
 
         verify(appService).translateWord(input);
     }
 
     @Test
-    void translateSentence_test() throws Exception {
+    void translateSentence_shouldTranslateSuccessfully() throws Exception {
         String input = "To jest duży kot";
-        String translated = "This is big cat";
-        when(appService.translateSentence(input)).thenReturn(translated);
+        TranslationDTO expected = new TranslationDTO("This is big cat");
+
+        when(appService.translateSentence(input)).thenReturn(expected);
 
         MockHttpServletRequestBuilder builder = MockMvcRequestBuilders
                 .get("/api/translator/translate-sentence")
@@ -71,16 +68,17 @@ class AppControllerTest {
 
         mockMvc.perform(builder)
                 .andExpect(status().isOk())
-                .andExpect(content().string(translated));
+                .andExpect(content().json(
+                        "{\"translation\":\"This is big cat\"}"));
 
         verify(appService).translateSentence(input);
     }
 
     @Test
-    void listUnknownWords() throws Exception {
-        UnknownWordResponse firstUnknown = new UnknownWordResponse(1L, "dom");
-        UnknownWordResponse secondUnknown = new UnknownWordResponse(2L, "kamienica");
-        List<UnknownWordResponse> unknownWords = Arrays.asList(firstUnknown, secondUnknown);
+    void listUnknownWords_shouldReturnSuccessfully() throws Exception {
+        ListUnknownWordDTO firstUnknown = new ListUnknownWordDTO(1L, "dom");
+        ListUnknownWordDTO secondUnknown = new ListUnknownWordDTO(2L, "kamienica");
+        List<ListUnknownWordDTO> unknownWords = Arrays.asList(firstUnknown, secondUnknown);
 
         when(appService.listUnknownWords()).thenReturn(unknownWords);
 
@@ -96,7 +94,7 @@ class AppControllerTest {
     }
 
     @Test
-    void report_test() throws Exception {
+    void report_shouldReturnSuccessfully() throws Exception {
         Map<Integer, Long> wordsPolish = new HashMap<>();
         wordsPolish.put(3, 2L);
         wordsPolish.put(4, 3L);
@@ -113,14 +111,14 @@ class AppControllerTest {
         averageLength.put("POL", 3.62);
         averageLength.put("ENG", 3.41);
 
-        Report report = new Report(
+        ReportDTO reportDTO = new ReportDTO(
                 10L,
                 wordsLength,
                 averageLength,
                 2L
                 );
 
-        when(reportService.report()).thenReturn(report);
+        when(reportService.report()).thenReturn(reportDTO);
 
         MockHttpServletRequestBuilder builder = MockMvcRequestBuilders
                 .get("/api/translator/report")
@@ -152,10 +150,10 @@ class AppControllerTest {
     }
 
     @Test
-    void listDictionary_test() throws Exception {
-        List<TranslationResponse> list = new ArrayList<>();
-        list.add(new TranslationResponse(1L, "pies", "dog"));
-        list.add(new TranslationResponse(2L, "kot", "cat"));
+    void listDictionary_shouldReturnSuccessfully() throws Exception {
+        List<ListTranslationDTO> list = new ArrayList<>();
+        list.add(new ListTranslationDTO(1L, "pies", "dog"));
+        list.add(new ListTranslationDTO(2L, "kot", "cat"));
 
         when(appService.listTranslations(any(Pageable.class))).thenReturn(list);
 
@@ -187,8 +185,8 @@ class AppControllerTest {
     }
 
     @Test
-    void newTranslation_test() throws Exception {
-        NewTranslationRequest request = new NewTranslationRequest(
+    void newTranslation_shouldReturnSuccessfully() throws Exception {
+        TranslationCreationDTO request = new TranslationCreationDTO(
                 "płot",
                 "fence"
         );
@@ -214,8 +212,8 @@ class AppControllerTest {
     }
 
     @Test
-    void newTranslation_testInvalidInput() throws Exception {
-        NewTranslationRequest request = new NewTranslationRequest(
+    void newTranslation_shouldThrowException() throws Exception {
+        TranslationCreationDTO request = new TranslationCreationDTO(
                 "gwiazda777",
                 "star"
         );
