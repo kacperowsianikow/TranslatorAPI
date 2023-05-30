@@ -33,11 +33,12 @@ class AppServiceTest {
     private IUnknownWordsRepository iUnknownWordsRepository;
     @Mock
     private Mapper mapper;
-    private AppService appService;
+    @Mock
+    private IAppService iAppService;
 
     @BeforeEach
     void setUp() {
-        appService = new AppService(
+        iAppService = new AppService(
                 iTranslationsRepository,
                 iUnknownWordsRepository,
                 mapper
@@ -57,7 +58,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO(translation.getEnglishWord()))
                 .thenReturn(new TranslationDTO("soldier"));
 
-        TranslationDTO result = appService.translateWord(input);
+        TranslationDTO result = iAppService.translateWord(input);
 
         assertThat(result.translation()).isEqualTo("soldier");
 
@@ -79,7 +80,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO(translation.getPolishWord()))
                 .thenReturn(new TranslationDTO("dąb"));
 
-        TranslationDTO result = appService.translateWord(input);
+        TranslationDTO result = iAppService.translateWord(input);
 
         assertThat(result.translation()).isEqualTo("dąb");
 
@@ -99,7 +100,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO("Provided word doesn't exist in the database"))
                 .thenReturn(new TranslationDTO("Provided word doesn't exist in the database"));
 
-        TranslationDTO result = appService.translateWord(input);
+        TranslationDTO result = iAppService.translateWord(input);
 
         assertThat(result.translation()).isEqualTo("Provided word doesn't exist in the database");
 
@@ -123,7 +124,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO("Cat chases mouse."))
                 .thenReturn(expected);
 
-        TranslationDTO result = appService.translateSentence(input);
+        TranslationDTO result = iAppService.translateSentence(input);
 
         assertThat(result.translation()).isEqualTo(expected.translation());
 
@@ -148,7 +149,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO("Table bez legs."))
                 .thenReturn(expected);
 
-        TranslationDTO result = appService.translateSentence(input);
+        TranslationDTO result = iAppService.translateSentence(input);
 
         assertThat(result.translation()).isEqualTo(expected.translation());
 
@@ -168,7 +169,7 @@ class AppServiceTest {
         when(mapper.toTranslationDTO("Provided blank input"))
                 .thenReturn(expected);
 
-        TranslationDTO result = appService.translateSentence(input);
+        TranslationDTO result = iAppService.translateSentence(input);
 
         assertThat(result).isEqualTo(expected);
 
@@ -191,7 +192,7 @@ class AppServiceTest {
         when(mapper.toTranslation(translatioCreationDTO))
                 .thenReturn(translation);
 
-        String result = appService.newTranslation(translatioCreationDTO);
+        String result = iAppService.newTranslation(translatioCreationDTO);
 
         assertThat(result).isEqualTo("New translation added to the dictionary");
 
@@ -214,7 +215,7 @@ class AppServiceTest {
         when(iTranslationsRepository.findByEnglishWordIgnoreCase(translationCreationDTO.englishWord()))
                 .thenReturn(Optional.of(translation));
 
-        String result = appService.newTranslation(translationCreationDTO);
+        String result = iAppService.newTranslation(translationCreationDTO);
 
         assertThat(result).isEqualTo("Provided translation already exists");
 
@@ -244,7 +245,7 @@ class AppServiceTest {
         when(mapper.toListTranslationDTO(translations.get(1)))
                 .thenReturn(expected.get(1));
 
-        List<ListTranslationDTO> translationsDTOS = appService.listTranslations(pageable);
+        List<ListTranslationDTO> translationsDTOS = iAppService.listTranslations(pageable);
 
         assertThat(translationsDTOS).hasSize(2);
         assertThat(translationsDTOS).isEqualTo(expected);
@@ -274,7 +275,7 @@ class AppServiceTest {
         when(mapper.toListUnknownWordDTO(unknownWords.get(1)))
                 .thenReturn(expected.get(1));
 
-        List<ListUnknownWordDTO> unknownWordDTOS = appService.listUnknownWords();
+        List<ListUnknownWordDTO> unknownWordDTOS = iAppService.listUnknownWords();
 
         assertThat(unknownWordDTOS).hasSize(2);
         assertThat(unknownWordDTOS).isEqualTo(expected);

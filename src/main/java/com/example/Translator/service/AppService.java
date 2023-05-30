@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AppService implements IService {
+public class AppService implements IAppService {
     private final ITranslationsRepository iTranslationsRepository;
     private final IUnknownWordsRepository iUnknownWordsRepository;
     private final Mapper mapper;

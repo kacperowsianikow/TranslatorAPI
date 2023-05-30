@@ -4,6 +4,7 @@ import com.example.Translator.dto.ReportDTO;
 import com.example.Translator.mapper.Mapper;
 import com.example.Translator.repository.ITranslationsRepository;
 import com.example.Translator.repository.IUnknownWordsRepository;
+import com.example.Translator.service.IReportService;
 import com.example.Translator.service.ReportService;
 import com.example.Translator.translation.Translation;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,11 +31,12 @@ class ReportDTOServiceTest {
     private IUnknownWordsRepository iUnknownWordsRepository;
     @Mock
     private Mapper mapper;
-    private ReportService reportService;
+    @Mock
+    private IReportService iReportService;
 
     @BeforeEach
     void setUp() {
-        reportService = new ReportService(
+        iReportService = new ReportService(
                 iTranslationsRepository,
                 iUnknownWordsRepository,
                 mapper
@@ -86,7 +88,7 @@ class ReportDTOServiceTest {
         when(mapper.toReportDTO(expectedReport))
                 .thenReturn(expectedReportDTO);
 
-        ReportDTO result = reportService.report();
+        ReportDTO result = iReportService.report();
 
         assertThat(result).isEqualTo(expectedReportDTO);
     }

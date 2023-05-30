@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class ReportService {
+public class ReportService implements IReportService {
     private final ITranslationsRepository iTranslationsRepository;
     private final IUnknownWordsRepository iUnknownWordsRepository;
     private final Mapper mapper;
