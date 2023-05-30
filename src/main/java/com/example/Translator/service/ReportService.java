@@ -1,124 +1,113 @@
 package com.example.Translator.service;
 
+import com.example.Translator.dto.ReportDTO;
+import com.example.Translator.mapper.Mapper;
 import com.example.Translator.report.Report;
 import com.example.Translator.repository.ITranslationsRepository;
 import com.example.Translator.repository.IUnknownWordsRepository;
 import com.example.Translator.translation.Translation;
+import com.itextpdf.text.Document;
+import com.itextpdf.text.Paragraph;
+import com.itextpdf.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.text.DecimalFormat;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class ReportService {
+public class ReportService implements IReportService {
     private final ITranslationsRepository iTranslationsRepository;
     private final IUnknownWordsRepository iUnknownWordsRepository;
+    private final Mapper mapper;
 
-    public Report report() {
+    public ReportDTO report() {
+        List<Translation> translations = iTranslationsRepository.findAll();
+
         Map<String, Map<Integer, Long>> wordsLengths = new HashMap<>();
-        wordsLengths.put("POL", wordsInPolish());
-        wordsLengths.put("ENG", wordsInEnglish());
+        wordsLengths.put("POL", countWordsLengths(translations, Translation::getPolishWord));
+        wordsLengths.put("ENG", countWordsLengths(translations, Translation::getEnglishWord));
 
-        return new Report(
-                iTranslationsRepository.count(),
-                wordsLengths,
-                averageLength(),
-                iUnknownWordsRepository.count()
-        );
-    }
-
-    private List<String> polishWordsList() {
-        List<Translation> translations = iTranslationsRepository.findAll();
-        List<String> polishWords = new ArrayList<>();
-        for (Translation translation : translations) {
-            polishWords.add(translation.getPolishWord());
-        }
-
-        polishWords.sort(Comparator.comparing(String::length));
-
-        return polishWords;
-    }
-
-    private List<String> englishWordsList() {
-        List<Translation> translations = iTranslationsRepository.findAll();
-        List<String> englishWords = new ArrayList<>();
-        for (Translation translation : translations) {
-            englishWords.add(translation.getEnglishWord());
-        }
-
-        englishWords.sort(Comparator.comparing(String::length));
-
-        return englishWords;
-    }
-
-    private Map<Integer, Long> wordsInPolish() {
-        List<String> polishWords = polishWordsList();
-
-        Map<Integer, Long> wordsLengthInPolish = new HashMap<>();
-        for (String word : polishWords) {
-            int length = word.length();
-            if (wordsLengthInPolish.containsKey(length)) {
-                wordsLengthInPolish.put(length, wordsLengthInPolish.get(length) + 1);
-            } else {
-                wordsLengthInPolish.put(length, 1L);
-            }
-        }
-        log.info("Listed number of words of given length in polish");
-
-        return wordsLengthInPolish;
-    }
-
-    private Map<Integer, Long> wordsInEnglish() {
-        List<String> englishWords = englishWordsList();
-
-        Map<Integer, Long> wordsLengthInEnglish = new HashMap<>();
-        for (String word : englishWords) {
-            int length = word.length();
-            if (wordsLengthInEnglish.containsKey(length)) {
-                wordsLengthInEnglish.put(length, wordsLengthInEnglish.get(length) + 1);
-            } else {
-                wordsLengthInEnglish.put(length, 1L);
-            }
-        }
-        log.info("Listed number of words of given length in english");
-
-        return wordsLengthInEnglish;
-    }
-
-    private Map<String, Double> averageLength() {
-        List<String> polishWords = polishWordsList();
-        List<String> englishWords = englishWordsList();
-
-        long sumPol = 0L;
-        for (String word : polishWords) {
-            sumPol += word.length();
-        }
-        double averagePol = (double) sumPol / polishWords.size();
-        log.info("Calculated average length of polish words: {}", averagePol);
-
-        long sumEng = 0L;
-        for (String word : englishWords) {
-            sumEng += word.length();
-        }
-        double averageEng = (double) sumEng / englishWords.size();
-        log.info("Calculated average length of english words: {}", averageEng);
+        double averagePolishLen = calculateAverageLength(translations, Translation::getPolishWord);
+        double averageEnglishLen = calculateAverageLength(translations, Translation::getEnglishWord);
 
         DecimalFormat df = new DecimalFormat("#.00");
-        String roundedPol = df.format(averagePol);
-        String roundedEng = df.format(averageEng);
+        Map<String, Double> averageLengths = new HashMap<>();
+        averageLengths.put("POL", Double.parseDouble(df.format(averagePolishLen)));
+        averageLengths.put("ENG", Double.parseDouble(df.format(averageEnglishLen)));
 
-        double roundedDoublePol = Double.parseDouble(roundedPol);
-        double roundedDoubleEng = Double.parseDouble(roundedEng);
+        Report report = new Report(
+                iTranslationsRepository.count(),
+                wordsLengths,
+                averageLengths,
+                iUnknownWordsRepository.count()
+        );
 
-        Map<String, Double> averageLengthOfWord = new HashMap<>();
-        averageLengthOfWord.put("POL", roundedDoublePol);
-        averageLengthOfWord.put("ENG", roundedDoubleEng);
+        return mapper.toReportDTO(report);
+    }
 
-        return averageLengthOfWord;
+    private Map<Integer, Long> countWordsLengths(List<Translation> translations,
+                                                 Function<Translation, String> extractWords) {
+        return translations.stream()
+                .map(extractWords)
+                .collect(Collectors.groupingBy(String::length,
+                        Collectors.counting()
+                ));
+    }
+
+    private double calculateAverageLength(List<Translation> translations,
+                                          Function<Translation, String> extractWords) {
+        return translations.stream()
+                .mapToInt(translation -> extractWords.apply(translation).length())
+                .average()
+                .orElse(0.0);
+    }
+
+    public byte[] generateReportInPdf() throws Exception {
+        ReportDTO reportDTO = report();
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        Document document = new Document();
+        PdfWriter.getInstance(document, outputStream);
+        document.open();
+        log.info("Converting to PDF");
+
+        document.add(new Paragraph("1. Number of words: " + reportDTO.wordsNumber()));
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("2. Words of different lengths:"));
+        document.add(new Paragraph("2. 1. Number of words of different lengths in polish"));
+        document.add(new Paragraph("(no of letters: no of words of this length):"));
+        for (Map.Entry<Integer, Long> entry : reportDTO.wordsLength().get("POL").entrySet()) {
+            document.add(new Paragraph(entry.getKey() + ": " + entry.getValue()));
+        }
+        document.add(new Paragraph(" "));
+        document.add(new Paragraph("2. 2. Number of words of different lengths in english"));
+        document.add(new Paragraph("(no of letters: no of words of this length):"));
+        for (Map.Entry<Integer, Long> entry : reportDTO.wordsLength().get("ENG").entrySet()) {
+            document.add(new Paragraph(entry.getKey() + ": " + entry.getValue()));
+        }
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("3. Average length of words in diff. languages: "));
+        document.add(new Paragraph("Polish: " + reportDTO.averageLength().get("POL")));
+        document.add(new Paragraph("English: " + reportDTO.averageLength().get("ENG")));
+        document.add(new Paragraph(" "));
+
+        document.add(new Paragraph("4. Number of unknown words: " + reportDTO.unknownWordsNumber()));
+
+        document.close();
+
+        return outputStream.toByteArray();
     }
 
 }

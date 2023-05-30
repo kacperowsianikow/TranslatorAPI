@@ -1,168 +1,155 @@
 package com.example.Translator.service;
 
+import com.example.Translator.dto.ListTranslationDTO;
+import com.example.Translator.dto.ListUnknownWordDTO;
+import com.example.Translator.dto.TranslationCreationDTO;
+import com.example.Translator.dto.TranslationDTO;
+import com.example.Translator.mapper.Mapper;
 import com.example.Translator.repository.ITranslationsRepository;
 import com.example.Translator.repository.IUnknownWordsRepository;
-import com.example.Translator.translation.NewTranslationRequest;
-import com.example.Translator.translation.SingleTranslationResponse;
 import com.example.Translator.translation.Translation;
-import com.example.Translator.translation.TranslationResponse;
-import com.example.Translator.unknownwords.UnknownWord;
-import com.example.Translator.unknownwords.UnknownWordResponse;
+import com.example.Translator.unknownword.UnknownWord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AppService {
+public class AppService implements IAppService {
     private final ITranslationsRepository iTranslationsRepository;
     private final IUnknownWordsRepository iUnknownWordsRepository;
+    private final Mapper mapper;
 
-    public SingleTranslationResponse translateWord(String word) {
+    public TranslationDTO translateWord(String word) {
         Optional<Translation> byPolishWord =
                 iTranslationsRepository.findByPolishWordIgnoreCase(word);
         if (byPolishWord.isPresent()) {
             log.info("Translation for POL word: {}, has been found", word);
-            return new SingleTranslationResponse(byPolishWord.get().getEnglishWord());
+            return mapper.toTranslationDTO(byPolishWord.get().getEnglishWord());
         }
 
         Optional<Translation> byEnglishWord =
                 iTranslationsRepository.findByEnglishWordIgnoreCase(word);
         if (byEnglishWord.isPresent()) {
             log.info("Translation for ENG word: {}, has been found", word);
-            return new SingleTranslationResponse(byEnglishWord.get().getPolishWord());
+            return mapper.toTranslationDTO(byEnglishWord.get().getPolishWord());
+        }
+
+        Optional<UnknownWord> byUnknownWord =
+                iUnknownWordsRepository.findAllByUnknownWord(word);
+        if (byUnknownWord.isEmpty()) {
+            TranslationDTO unknownWord = new TranslationDTO(word);
+            log.info("Unknown word: {} has been added to DB", word);
+            iUnknownWordsRepository.save(mapper.toUnknownWord(unknownWord));
         }
 
         log.info("No translation found for word: {}", word);
-        return new SingleTranslationResponse(
-                "Provided word doesn't exist in the database"
-        );
+
+        return mapper.toTranslationDTO("Provided word doesn't exist in the database");
     }
 
-    public String translateSentence(String sentence) {
+    public TranslationDTO translateSentence(String sentence) {
         if (sentence.isBlank()) {
             log.info("Provided blank input");
-            return "Provided blank input";
+            return mapper.toTranslationDTO("Provided blank input");
         }
+
         String[] words = sentence.split("[,\\s]+");
         StringBuilder stringBuilder = new StringBuilder();
 
         for (String unclearedWord : words) {
             String word = unclearedWord.replaceAll("[.!?]+$", "");
 
-            Optional<Translation> byPolishWord =
-                    iTranslationsRepository.findByPolishWordIgnoreCase(word);
-            if (byPolishWord.isPresent()) {
+            Optional<Translation> translation = findTranslation(word);
+            if (translation.isPresent()) {
                 log.info("Translation for POL word: {}, has been found", word);
 
-                String englishTranslation = byPolishWord.get().getEnglishWord();
-                if (stringBuilder.isEmpty()) {
-                    char firstChar = Character.toUpperCase(englishTranslation.charAt(0));
-                    stringBuilder
-                            .append(firstChar)
-                            .append(englishTranslation.substring(1))
-                            .append(" ");
-                    continue;
-                }
-
-                stringBuilder.append(englishTranslation).append(" ");
-                continue;
-            }
-
-            Optional<Translation> byEnglishWord =
-                    iTranslationsRepository.findByEnglishWordIgnoreCase(word);
-            if (byEnglishWord.isPresent()) {
-                log.info("Translation for ENG word: {}, has been found", word);
-
-                String polishTranslation = byEnglishWord.get().getPolishWord();
-                if (stringBuilder.isEmpty()) {
-                    char firstLetter = Character.toUpperCase(polishTranslation.charAt(0));
-                    stringBuilder
-                            .append(firstLetter)
-                            .append(polishTranslation.substring(1))
-                            .append(" ");
-                }
-                stringBuilder.append(polishTranslation).append(" ");
+                String translatedWord = getTranslatedWord(translation.get(), word);
+                stringBuilder.append(translatedWord).append(" ");
                 continue;
             }
 
             log.info("No translation found for word: {}", word);
             stringBuilder.append(word).append(" ");
 
-            Optional<UnknownWord> byUnknownWord = iUnknownWordsRepository.findAllByUnknownWord(word);
+            Optional<UnknownWord> byUnknownWord =
+                    iUnknownWordsRepository.findAllByUnknownWord(word);
             if (byUnknownWord.isEmpty()) {
-                UnknownWord unknownWord = new UnknownWord(word);
+                TranslationDTO unknownWord = new TranslationDTO(word);
                 log.info("Unknown word: {} has been added to DB", word);
-                iUnknownWordsRepository.save(unknownWord);
+                iUnknownWordsRepository.save(mapper.toUnknownWord(unknownWord));
             }
 
         }
 
-        return stringBuilder
-                .deleteCharAt(stringBuilder.length() - 1)
+        String result = stringBuilder.deleteCharAt(stringBuilder.length() - 1)
                 .append(".")
-                .toString().trim();
+                .toString();
+
+        return mapper.toTranslationDTO(
+                Character.toUpperCase(result.charAt(0)) +
+                result.substring(1)
+        );
     }
 
-    public List<UnknownWordResponse> listUnknownWords() {
-        List<UnknownWord> allUnknownWords = iUnknownWordsRepository.findAll();
-        log.info("Downloaded unknown words from DB");
-        List<UnknownWordResponse> allUnknownWordsOutput = new LinkedList<>();
-
-        for (UnknownWord word : allUnknownWords) {
-            UnknownWordResponse unknownWordResponse = new UnknownWordResponse(
-                    word.getId(),
-                    word.getUnknownWord()
-            );
-            allUnknownWordsOutput.add(unknownWordResponse);
-            log.info("Added all unknown words to the list");
+    private Optional<Translation> findTranslation(String word) {
+        Optional<Translation> byPolishWord =
+                iTranslationsRepository.findByPolishWordIgnoreCase(word);
+        if (byPolishWord.isPresent()) {
+            return byPolishWord;
         }
 
-        return allUnknownWordsOutput;
+        return iTranslationsRepository.findByEnglishWordIgnoreCase(word);
     }
 
-    public String newTranslation(NewTranslationRequest newTranslationRequest) {
+    private String getTranslatedWord(Translation translation, String word) {
+        if (translation.getPolishWord().equalsIgnoreCase(word)) {
+            return translation.getEnglishWord();
+        }
+
+        return translation.getPolishWord();
+    }
+
+    public List<ListUnknownWordDTO> listUnknownWords() {
+        List<UnknownWord> unknownWords = iUnknownWordsRepository.findAll();
+        log.info("Downloaded unknown words from DB");
+
+        return unknownWords.stream()
+                .map(mapper::toListUnknownWordDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<ListTranslationDTO> listTranslations(Pageable pageable) {
+        Page<Translation> page = iTranslationsRepository.findAll(pageable);
+        log.info("Found {} translations", page.getTotalElements());
+
+        List<Translation> translations = page.getContent();
+        log.info("Converting page to list");
+
+        return translations.stream()
+                .map(mapper::toListTranslationDTO)
+                .collect(Collectors.toList());
+    }
+
+    public String newTranslation(TranslationCreationDTO translationCreationDTO) {
         Optional<Translation> byEnglishWord =
-                iTranslationsRepository.findByEnglishWordIgnoreCase(newTranslationRequest.englishWord());
+                iTranslationsRepository.findByEnglishWordIgnoreCase(translationCreationDTO.englishWord());
         if (byEnglishWord.isPresent()) {
             log.info("Provided translation already exists");
             return "Provided translation already exists";
         }
 
-        Translation translation = new Translation(
-                newTranslationRequest.polishWord(),
-                newTranslationRequest.englishWord()
-        );
-        iTranslationsRepository.save(translation);
+        iTranslationsRepository.save(mapper.toTranslation(translationCreationDTO));
 
         log.info("New translation added to the dictionary");
         return "New translation added to the dictionary";
-    }
-
-    public List<TranslationResponse> listTranslations(Pageable pageable) {
-        Page<Translation> page = iTranslationsRepository.findAll(pageable);
-        log.info("Found {} translations", page.getTotalElements());
-
-        List<Translation> translationList = page.getContent();
-        log.info("Converting page to list");
-        List<TranslationResponse> listResponse = new LinkedList<>();
-        for (Translation translation : translationList) {
-            TranslationResponse response = new TranslationResponse(
-                    translation.getId(),
-                    translation.getPolishWord(),
-                    translation.getEnglishWord()
-            );
-            listResponse.add(response);
-        }
-
-        return listResponse;
     }
 
 }
